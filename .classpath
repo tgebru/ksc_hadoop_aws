@@ -54,6 +54,6 @@
 	<classpathentry kind="lib" path="/Applications/hadoop-1.0.3/lib/slf4j-api-1.4.3.jar"/>
 	<classpathentry kind="lib" path="/Applications/hadoop-1.0.3/lib/slf4j-log4j12-1.4.3.jar"/>
 	<classpathentry kind="lib" path="/Applications/hadoop-1.0.3/lib/xmlenc-0.52.jar"/>
-	<classpathentry kind="lib" path="/Applications/ejml-0.22.jar"/>
+	<classpathentry kind="lib" path="/Applications/ejml/build/jar/EJML.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

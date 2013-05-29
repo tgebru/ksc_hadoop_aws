@@ -105,8 +105,8 @@ public class KSC {
 			
 			/***Uncomment for amazon  ***/
 		
-			String uriStr = "s3n://energydata/centroid/"; 
-			//String uriStr = "./centroid";
+			//String uriStr = "s3n://energydata/centroid/"; 
+			String uriStr = "./centroid";
 			
 			log.info("Mapper started fs-get centroid file");
 			URI uri = URI.create(uriStr);
@@ -157,8 +157,8 @@ public class KSC {
 
 					for (double[] centroid : INIT) {
 						for (int i=0;i<numPoints;i++){
-							c.set(1,i,centroid[i]);
-					    	p.set(1,i,point[i]);
+							c.set(i,centroid[i]);
+					    	p.set(i,point[i]);
 						}
 						
 						double tmp = distance(c, p);
@@ -202,9 +202,9 @@ public class KSC {
 
 			// Get the centroids and keep them in memory
 			// Uncomment for amazon //
-			String uriStr = "s3n://energydata/output/";
+			//String uriStr = "s3n://energydata/output/";
 			log.info("Reducer started fs-get centroid file");
-			//String uriStr = "./output";
+			String uriStr = "./output";
 			URI uri = URI.create(uriStr);
 			FileSystem fs = FileSystem.get(uri, context.getConfiguration());	
 
@@ -300,7 +300,7 @@ public class KSC {
 	public static void main(String[] args) throws Exception {
 
 		//Run as inputDir outputDir centroidDir no_of_iters max_clusters stepSize 
-		//./ output ./energy-c1_norm.txt 2 10 10
+		//./ output/ ./energy-c1_norm.txt 2 10 10
 
 		long startTime = System.currentTimeMillis();   //Measure elapsed time
 		Configuration conf = new Configuration();
@@ -309,7 +309,7 @@ public class KSC {
 		String inputDir = args[0];
 		//String opDirBase = args[1];
 		String initCentroidsPath = args[2];
-		int no_of_iters = Integer.valueOf(args[3]);
+		int no_of_iters = 10;// Ucomment for amazon Integer.valueOf(args[3]);
 		int max_clusters = Integer.valueOf(args[4]);
 		int stepSize=Integer.valueOf(args[5]);
 		int min_clusters = 10;
@@ -328,16 +328,17 @@ public class KSC {
 			inputFiles +=baseFileName+ String.valueOf(i) +suffix+",";
 		}
 		/*** uncomment for amazon ***/
-		inputFiles = inputFiles.substring(0, inputFiles.length()-1);
+		//inputFiles = inputFiles.substring(0, inputFiles.length()-1);
 		//inputFiles = uriStr+ "electric_interval_data_long_part1_and2_96.txt";
 		//inputFiles ="./input-only/test_shapes-header.csv";
+		inputFiles ="./input-only/test_10.csv";
 		//inputFiles = "./input-only/electric_interval_data_long_part1_and2_96.txt";
 
 
 		//int j=50;
 		String cDir = "";
 		//for (int j=min_clusters; j<=max_clusters;j+=stepSize){  //Number of clusters
-			int j=200;
+			int j=3; //j=200; Uncomment for amazon
 			String opDirBase = args[1]+String.valueOf(j);
 			conf.set(NUMOFCLUSTERS, String.valueOf(j));
 	      	//System.out.println(conf.get(NUMOFCLUSTERS));
