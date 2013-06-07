@@ -1,7 +1,9 @@
 package edu.stanford.cs246.hw2;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
@@ -23,10 +25,9 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.ejml.ops.CommonOps;
-import org.ejml.simple.SimpleEVD;
-import org.ejml.simple.SimpleMatrix;
-import org.ejml.simple.SimpleSVD;
+//import org.ejml.ops.CommonOps;
+import org.ejml.simple.*;
+//import org.ejml.simple.SimpleSVD;
 
 /**
  * Algorithm:
@@ -109,8 +110,7 @@ public class KSC {
 
 			Configuration conf = context.getConfiguration();
 			
-			/***Uncomment for amazon  ***/
-		
+			/***Uncomment for amazon  ***/	
 			//String uriStr = "s3n://energydata/centroid/"; 
 			String uriStr = "./centroid";
 			
@@ -182,7 +182,9 @@ public class KSC {
 							}
 						}
 					}else{
-						closestCentroid = (numOfClusters-1)* Math.round((float)Math.random());
+						
+						closestCentroid = Math.round((numOfClusters-1)*(float)Math.random());
+						//System.out.println("Iteration #:" + numIterations + " #of Clusters:" + String.valueOf(numOfClusters) + " Closest Centroid:" + String.valueOf(closestCentroid));
 					}
 					log.info("Mapper finished calculating distance");
 					
@@ -190,7 +192,7 @@ public class KSC {
 					log.info("Mapper started writing point");
 					context.write(new IntWritable(closestCentroid),
 							new Text(longArrayToString(point)));
-					System.out.println(closestCentroid);
+					//System.out.println(closestCentroid);
 					log.info("Mapper finished writing point-start spid");
 					//Write key=Centroid, Value=s-SPID,Date
 					context.write(new IntWritable(closestCentroid),
@@ -220,8 +222,9 @@ public class KSC {
 			// Get the centroids and keep them in memory
 			// Uncomment for amazon //
 			//String uriStr = "s3n://energydata/output/";
-			log.info("Reducer started fs-get centroid file");
 			String uriStr = "./output";
+			//log.info("Reducer started fs-get centroid file");
+			
 			URI uri = URI.create(uriStr);
 			FileSystem fs = FileSystem.get(uri, context.getConfiguration());	
 
@@ -250,7 +253,7 @@ public class KSC {
 				Iterable<Text> values, Context context)
 				throws IOException, InterruptedException {
 			
-			System.out.println("Reducer key: " + key.get());
+			//System.out.println("Reducer key: " + key.get());
 
 			ArrayList<String> infoList = new ArrayList<String>();
 			if (key.get() == -1) { //we are reading the cost
@@ -260,7 +263,6 @@ public class KSC {
 				for (Text str : values) {
 						no ++;
 						cost = cost + Double.parseDouble(str.toString());
-
 				}
 				context.write(new Text("C" + "-" + key.toString()), new Text(df.format(cost)));				
 			} else {
@@ -314,8 +316,7 @@ public class KSC {
 		}
 	}
 
-	public static void main(String[] args) throws Exception {
-
+	public static void main(String[] args) throws Exception {		
 		//Run as inputDir outputDir centroidDir no_of_iters max_clusters stepSize 
 		//./ output/ ./energy-c1_norm.txt  2 10 10
 
@@ -326,7 +327,7 @@ public class KSC {
 		String inputDir = args[0];
 		//String opDirBase = args[1];
 		String initCentroidsPath = args[2];
-		int no_of_iters = 10;// Ucomment for amazon Integer.valueOf(args[3]);
+		int no_of_iters = 2;//Integer.valueOf(args[3]);  // Ucomment for amazon 
 		int max_clusters = Integer.valueOf(args[4]);
 		int stepSize=Integer.valueOf(args[5]);
 		int min_clusters = 10;
@@ -334,7 +335,7 @@ public class KSC {
 		String uriStr = inputDir;
 		URI uri = URI.create(uriStr);
 		FileSystem fs = FileSystem.get(uri, conf);   
-		System.out.println("Working directory:"+fs.getWorkingDirectory().toString());
+		//System.out.println("Working directory:"+fs.getWorkingDirectory().toString());
 		String inputFiles = "";
 		String baseFileName    = uriStr+"electric_interval_data_long_part";
 		String suffix = "_96.txt";
@@ -346,15 +347,15 @@ public class KSC {
 		/*** uncomment for amazon ***/
 		//inputFiles = inputFiles.substring(0, inputFiles.length()-1);
 		//inputFiles = uriStr+ "electric_interval_data_long_part1_and2_96.txt";
-		//inputFiles ="./input-only/test_shapes-header.csv";
-		inputFiles ="./input-only/test_10.csv";
+		inputFiles ="./input-only/test_shapes_100k.csv";
+		//inputFiles ="./input-only/test_10.csv";
 		//inputFiles = "./input-only/electric_interval_data_long_part1_and2_96.txt";
 
 
 		//int j=50;
 		String cDir = "";
 		//for (int j=min_clusters; j<=max_clusters;j+=stepSize){  //Number of clusters
-			int j=2; //j=200; Uncomment for amazon
+			int j=100; //Uncomment for amazon
 			String opDirBase = args[1]+String.valueOf(j);
 			conf.set(NUMOFCLUSTERS, String.valueOf(j));
 	      	//System.out.println(conf.get(NUMOFCLUSTERS));
@@ -424,6 +425,7 @@ public class KSC {
 	public static double[] parsePoint(String input) {
 		double[]point = new double[96];
 		int length = point.length;
+		
 		if (input.startsWith("k")) {
 			String[] tk = input.split("\t");
 			input = tk[1];
@@ -446,6 +448,7 @@ public class KSC {
 			//int daily_total=0;
 			for (int i=0;i<length;i++){
 				point[i]=Double.parseDouble(tokens[i+offset]);
+				point[i]=point[i]/1000; //convert from wattH to kWh
 			//	daily_total+=point[i];
 			}
 		/*	
@@ -562,16 +565,26 @@ public class KSC {
 	public static double[] calculate_centroid(SimpleMatrix points, SimpleMatrix cur_center, int numRows) {
 		int numPoints = 96;
 		double [] norms_inv = new double[numRows];
+		//double [] vector_norms = new double[numRows];
+		
 		double [] centroid = new double[numPoints];
 		for (int i=0;i<numRows;i++){  //points_shifted=get shifted versions of all points;
 			SimpleMatrix vector = points.extractVector(true, i);
 			vector=distance_result(cur_center,vector);
 			points.insertIntoThis(i,0,vector);
-			norms_inv[i] = Math.pow(vector.normF(),-1);
+			//vector_norms[i] = vector.normF();
+			double norm = vector.normF();
+			
+/*** Look at this again cause norm should never be zero. Might be something wrong ***/			
+			if (norm!=0){
+				norms_inv[i] = Math.pow(norm,-1);//Math.pow(vector.normF(),-1);
+			}else{
+				norms_inv[i] = 1;
+			}
+/****/				
 		}
 		
-		SimpleMatrix points_norm_inv= new SimpleMatrix(numRows,numPoints);    //points.elementMult(points);
-		
+		SimpleMatrix points_norm_inv= new SimpleMatrix(numRows,numPoints);    //points.elementMult(points);		
 		double[] repmat_norm_inv=new double[numPoints];
 		for (int i=0;i<numRows;i++){
 			for (int j=0;j<numPoints;j++){
@@ -579,9 +592,117 @@ public class KSC {
 			}
 			points_norm_inv.setRow(i, 0, repmat_norm_inv); //SimpleMatrix a_norm = repmat(sqrt(sum(a.^2,2)), [1 size(a,2)]);
 		}
+	
 		SimpleMatrix b= points.elementMult(points_norm_inv);
 		SimpleMatrix M= b.transpose().mult(b).minus(SimpleMatrix.identity(numPoints).scale(numRows));
 		
+/****/		
+		System.out.println("Matrix Size: " + "Rows: "+ numRows + " Cols "+ numPoints);
+		System.out.println("M-Matrix Size: " + "Rows: "+ M.numRows() + " Cols "+ M.numCols());
+		System.out.println("B-Matrix Size: " + "Rows: "+ b.numRows() + " Cols "+ b.numCols());
+	
+		
+/*****		
+		//Write Inv Norm matrix out to text file to look at values & try eigenvalue decomposition in matlab
+		//Write to file
+		 try{
+			 String file_name = "vector-norm-test_matrix_" + String.valueOf(numRows) + ".txt";
+			 FileWriter file = new FileWriter(file_name);
+			 BufferedWriter out = new BufferedWriter (file);
+			 for (int i=0; i<numRows; i++){
+				 out.append(String.valueOf(vector_norms[i]));
+				 out.append("\n");
+				 //System.out.println(text);
+				 //out.write(text);
+			 }
+		 out.close();
+	     }catch (IOException e){
+             System.out.println(e.getMessage());
+	     }	
+	        
+	
+		//Write Inv Norm matrix out to text file to look at values & try eigenvalue decomposition in matlab
+		double[][] norms = new double[numRows][numPoints];
+		for (int i=0; i<numRows; i++){	
+			for (int j=0;j<numPoints;j++){
+				norms[i][j] = b.get(i,j);
+			}
+		}
+		//Write to file
+		 try{
+			 String file_name = "Norm-test_matrix_" + String.valueOf(numRows) + ".txt";
+			 FileWriter file = new FileWriter(file_name);
+			 BufferedWriter out = new BufferedWriter (file);
+			 for (int i=0; i<numRows; i++){
+				for (int j=0;j<numPoints;j++){
+				 out.append(String.valueOf(norms[i][j]));
+				 out.append(",");
+				}
+				 out.append("\n");
+				 //System.out.println(text);
+				 //out.write(text);
+			 }
+			 out.close();
+	     }catch (IOException e){
+             System.out.println(e.getMessage());
+	     }	
+	        
+		
+		//Write M matrix out to text file to look at values & try eigenvalue decomposition in matlab
+		double[][] contents = new double[numRows][numPoints];
+		for (int i=0; i<numRows; i++){	
+			for (int j=0;j<numPoints;j++){
+				contents[i][j] = b.get(i,j);
+			}
+		}
+		//Write to file
+		 try{
+			 String file_name = "B-test_matrix_" + String.valueOf(numRows) + ".txt";
+			 FileWriter file = new FileWriter(file_name);
+			 BufferedWriter out = new BufferedWriter (file);
+			 for (int i=0; i<numRows; i++){
+				for (int j=0;j<numPoints;j++){
+				 out.append(String.valueOf(contents[i][j]));
+				 out.append(",");
+				}
+				 out.append("\n");
+				 //System.out.println(text);
+				 //out.write(text);
+			 }
+			 out.close();
+	     }catch (IOException e){
+             System.out.println(e.getMessage());
+	     }	
+	        
+	
+		//Write M matrix out to text file to look at values & try eigenvalue decomposition in matlab
+		double[][] contents = new double[numPoints][numPoints];
+		for (int i=0; i<numPoints; i++){	
+			for (int j=0;j<numPoints;j++){
+				contents[i][j] = M.get(i,j);
+			}
+		}
+		//Write to file
+		 try{
+			 String file_name = "test_matrix_" + String.valueOf(numRows) + ".txt";
+			 FileWriter file = new FileWriter(file_name);
+			 BufferedWriter out = new BufferedWriter (file);
+			 for (int i=0; i<numPoints; i++){
+				for (int j=0;j<numPoints;j++){
+				 out.append(String.valueOf(contents[i][j]));
+				 out.append(" ");
+				}
+				 out.append("\n");
+				 //System.out.println(text);
+				 //out.write(text);
+			 }
+			 out.append("\n");
+			 out.close();
+	     }catch (IOException e){
+             System.out.println(e.getMessage());
+	     }	
+	        
+****/	
 		SimpleEVD eigenDecomp = M.eig();
 		SimpleMatrix centroid_matrix=eigenDecomp.getEigenVector(eigenDecomp.getIndexMin());
 
