@@ -24,6 +24,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.ejml.ops.CommonOps;
+import org.ejml.simple.SimpleEVD;
 import org.ejml.simple.SimpleMatrix;
 import org.ejml.simple.SimpleSVD;
 
@@ -83,6 +84,7 @@ public class KSC {
 
 	public static String CFILE = "cFile";
 	public static String NUMOFCLUSTERS="numOfClusters";
+	public static String NUMITERATIONS="numOfIterations";
 	public static DecimalFormat df = new DecimalFormat("#.#####");
 	public static int NUMPOINTS = 96;
 
@@ -91,12 +93,16 @@ public class KSC {
 	public static class CentroidMapper extends
 			Mapper<Object, Text, IntWritable, Text> {
 
-		public ArrayList<double[]> INIT = new ArrayList<double[]>();
+		//public ArrayList<double[]> INIT = new ArrayList<double[]>();
+		public double[][]INIT;
 		public Log log=LogFactory.getLog(CentroidMapper.class);
-		int numPoints = 96;
+		public int numPoints = 96;
+		public int numOfClusters;
+		public int numIterations;
 		
 		public SimpleMatrix p = new SimpleMatrix(1,numPoints,true,new double[numPoints]);
-		public SimpleMatrix c = new SimpleMatrix(1,numPoints,true,new double[numPoints]);
+		public SimpleMatrix c;
+		
 		@Override
 		protected void setup(Context context) throws IOException,
 				InterruptedException {
@@ -121,18 +127,25 @@ public class KSC {
 			DataInputStream d = new DataInputStream(fs.open(cFile));
 			BufferedReader reader = new BufferedReader(new InputStreamReader(d));
 			String line;
-			int  numOfClusters = Integer.valueOf(context.getConfiguration().get(NUMOFCLUSTERS));
-			int centroidLength=0;
+			numOfClusters = Integer.valueOf(context.getConfiguration().get(NUMOFCLUSTERS));
+			numIterations = Integer.valueOf(context.getConfiguration().get(NUMITERATIONS));
 			log.info("Mapper started reading centroid file");
+			INIT = new double[numOfClusters][numPoints];
+			
+			int centroidLength=0;
 			while ((line = reader.readLine()) != null) {
 				if (!line.startsWith("C") && !line.startsWith("s")&& !line.startsWith("w")&&centroidLength !=numOfClusters) {
-					INIT.add(parsePoint(line));
-					centroidLength++;
-					//System.out.println(centroidLength);
+					double[] one_point = new double[numPoints];
+					one_point=(parsePoint(line));	
+					for (int i=0;i<numPoints;i++){
+						INIT[centroidLength][i] = one_point[i];
+					}
+					//System.out.println(String.valueOf(INIT[centroidLength]));
+					centroidLength++;		
 				}
 			}
 			log.info("Mapper finished reading centroid file");
-		
+			c = new SimpleMatrix(INIT);		
 		}
 
 		public void map(Object key, Text value, Context context)
@@ -155,18 +168,21 @@ public class KSC {
 					int closestCentroid = 0;
 					double distance = Long.MAX_VALUE;
 
-					for (double[] centroid : INIT) {
-						for (int i=0;i<numPoints;i++){
-							c.set(i,centroid[i]);
-					    	p.set(i,point[i]);
+					if (numIterations >0) {   //For the first iteration, assign clusters randomly
+						//for (double[] centroid : INIT) {
+						for (int centroidIndex=0;centroidIndex<numOfClusters;centroidIndex++){
+							for (int i=0;i<numPoints;i++){	
+								p.set(i,point[i]);
+							}						
+							SimpleMatrix mat = c.extractVector(true, centroidIndex);
+							double tmp = distance(c.extractVector(true,centroidIndex), p);
+							if (tmp < distance) {
+								closestCentroid = centroidIndex; //INIT.indexOf(centroid);
+								distance = tmp;
+							}
 						}
-						
-						double tmp = distance(c, p);
-
-						if (tmp < distance) {
-							closestCentroid = INIT.indexOf(centroid);
-							distance = tmp;
-						}
+					}else{
+						closestCentroid = (numOfClusters-1)* Math.round((float)Math.random());
 					}
 					log.info("Mapper finished calculating distance");
 					
@@ -174,6 +190,7 @@ public class KSC {
 					log.info("Mapper started writing point");
 					context.write(new IntWritable(closestCentroid),
 							new Text(longArrayToString(point)));
+					System.out.println(closestCentroid);
 					log.info("Mapper finished writing point-start spid");
 					//Write key=Centroid, Value=s-SPID,Date
 					context.write(new IntWritable(closestCentroid),
@@ -232,6 +249,8 @@ public class KSC {
 		protected void reduce(IntWritable key,
 				Iterable<Text> values, Context context)
 				throws IOException, InterruptedException {
+			
+			System.out.println("Reducer key: " + key.get());
 
 			ArrayList<String> infoList = new ArrayList<String>();
 			if (key.get() == -1) { //we are reading the cost
@@ -246,7 +265,7 @@ public class KSC {
 				context.write(new Text("C" + "-" + key.toString()), new Text(df.format(cost)));				
 			} else {
 				double[] new_centroid = new double[NUM_POINTS];//new double[INIT.get(0).length];
-				double[] point   = new double[NUM_POINTS];
+				
 				ArrayList<double[]> cluster_members = new ArrayList<double[]>();
 				
 				int count = 0;
@@ -258,28 +277,26 @@ public class KSC {
 				for (Text str : values) {
 					String input = str.toString();
 					if (!input.startsWith("s")) {//if string has comma it is spid & date	
+						double[] point   = new double[NUM_POINTS];
 						String[] tokens = input.split(" "); 
 						for (int i=0; i<NUM_POINTS;i++){
 						     point[i]=Double.parseDouble(tokens[i]);
 						     //average[i] =  average[i]+point[i];
-						     cluster_members.add(point);
 						}
+						cluster_members.add(point);
 					    count++;
 					}else { //just save the spid & date
 						infoList.add(str.toString());
 					}
 				}
 
-				
-				// New centroid at center of mass for this cluster
-			/*	
-				int ave_length = average.length;
-				for (int i = 0; i < ave_length; i++) {
-					average[i] = average[i] / count;
-				}
-			*/	
 				// New centroid at center of mass for this cluster
 				SimpleMatrix member_points = new SimpleMatrix(count,NUM_POINTS);
+				for (int i=0;i<count;i++){
+					double[] curPoint = cluster_members.get(i);
+					System.out.print("\n");
+					member_points.setRow(i, 0, cluster_members.get(i));
+				}
 				SimpleMatrix cur_center    = new SimpleMatrix(1,NUM_POINTS, true,INIT.get(key.get()));
 				new_centroid = calculate_centroid(member_points, cur_center, count);
 				log.info("Reducer finished calculating" + Integer.toString(count));
@@ -300,7 +317,7 @@ public class KSC {
 	public static void main(String[] args) throws Exception {
 
 		//Run as inputDir outputDir centroidDir no_of_iters max_clusters stepSize 
-		//./ output/ ./energy-c1_norm.txt 2 10 10
+		//./ output/ ./energy-c1_norm.txt  2 10 10
 
 		long startTime = System.currentTimeMillis();   //Measure elapsed time
 		Configuration conf = new Configuration();
@@ -313,7 +330,6 @@ public class KSC {
 		int max_clusters = Integer.valueOf(args[4]);
 		int stepSize=Integer.valueOf(args[5]);
 		int min_clusters = 10;
-
 
 		String uriStr = inputDir;
 		URI uri = URI.create(uriStr);
@@ -338,13 +354,13 @@ public class KSC {
 		//int j=50;
 		String cDir = "";
 		//for (int j=min_clusters; j<=max_clusters;j+=stepSize){  //Number of clusters
-			int j=3; //j=200; Uncomment for amazon
+			int j=2; //j=200; Uncomment for amazon
 			String opDirBase = args[1]+String.valueOf(j);
 			conf.set(NUMOFCLUSTERS, String.valueOf(j));
 	      	//System.out.println(conf.get(NUMOFCLUSTERS));
 			System.out.println("# of Clusters:" + j
 					+ "===========================================");
-			for (int i = 0; i <= no_of_iters; i++) {
+			for (int i = 0; i < no_of_iters; i++) {
 				System.out.println("Iteration :" + i
 						+ "===========================================");
 				// Output dir in HDFS for this iteration
@@ -354,6 +370,7 @@ public class KSC {
 
 				// Merge o/p from previous job for jobs after the init run is
 				// complete
+				conf.set(NUMITERATIONS, String.valueOf(i));
 				if (i > 0) {
 					cDir = opDirBase + "/" + (i - 1);
 					// System.out.println("cDir "+i+" :"+cDir);
@@ -401,7 +418,7 @@ public class KSC {
 			}
 			long stopTime = System.currentTimeMillis();
 			long elapsedTime = stopTime - startTime;
-		    System.out.println(elapsedTime);
+		    //System.out.println(elapsedTime);
 	}
 
 	public static double[] parsePoint(String input) {
@@ -478,10 +495,10 @@ public class KSC {
 			}else{
 				pnorm=x.normF();
 			}
-			curDistance= x.minus(y.scale(alpha)).normF()/pnorm;    //norm(x - alpha * y) / pnorm; pnorm=1 if point=0, else pnorm=norm(point);
-			if (curDistance > minDistance) minDistance=curDistance;
+			curDistance= x.minus(y_shift.scale(alpha)).normF()/pnorm;    //norm(x - alpha * y) / pnorm; pnorm=1 if point=0, else pnorm=norm(point);
+			if (curDistance < minDistance) minDistance=curDistance;
 		}	
-		return result;
+		return minDistance;
 	}
 	
 	public static SimpleMatrix distance_result (SimpleMatrix x, SimpleMatrix y) {
@@ -503,23 +520,35 @@ public class KSC {
 			}else{
 				pnorm=x.normF();
 			}
-			curDistance= x.minus(y.scale(alpha)).normF()/pnorm;    //norm(x - alpha * y) / pnorm; pnorm=1 if point=0, else pnorm=norm(point);
-			if (curDistance > minDistance) {
+			curDistance= x.minus(y_shift.scale(alpha)).normF()/pnorm;    //norm(x - alpha * y) / pnorm; pnorm=1 if point=0, else pnorm=norm(point);
+			if (curDistance < minDistance){
 				minDistance=curDistance;
-				min_y_shift = y_shift;
+				min_y_shift.insertIntoThis(0, 0, y_shift);
 			}
-		}
+		}	
 		return min_y_shift;
 	}
 	
 	public static void shift(SimpleMatrix x, SimpleMatrix shifted, int shift_val){
 		int numPoints = 96;		
+		
 		if (shift_val <0){
 			double[] zeros=new double[-shift_val];
-			shifted.setRow(0,numPoints-1+shift_val,zeros);   //yshift = [y(-shift + 1:end) zeros(1, -shift)];
+			shifted.setRow(0,numPoints+shift_val,zeros);   //yshift = [y(-shift + 1:end) zeros(1, -shift)];
+			//SimpleMatrix inserted = x.extractMatrix(0,0,-shift_val,x.numCols()-1);
+			//shifted.insertIntoThis(0,0,  x.extractMatrix(0, 0, -shift_val-1, x.END));
+			for (int i=-shift_val;i<=numPoints-1;i++){ //do it manual way cause above didn't work!
+				shifted.set(i+shift_val, x.get(i));
+			}
 		}else {
-			double[] zeros=new double[shift_val];
-			shifted.setRow(0,0,zeros);//yshift = [zeros(1,shift) y(1:end-shift) ];
+			if (shift_val !=0){
+				double[] zeros=new double[shift_val];
+				shifted.setRow(0,0,zeros);//yshift = [zeros(1,shift) y(1:end-shift) ];
+				//shifted.insertIntoThis(0,1,x.extractMatrix(0, 0, shift_val, numPoints-shift_val-1));
+				for (int i=shift_val;i<=numPoints-1;i++){ //do it manual way cause above didn't work!
+					shifted.set(i, x.get(i-shift_val));
+				}
+			} 				
 		}		
 	}
 	
@@ -532,32 +561,42 @@ public class KSC {
 	//Calculate new centroid for KSC
 	public static double[] calculate_centroid(SimpleMatrix points, SimpleMatrix cur_center, int numRows) {
 		int numPoints = 96;
+		double [] norms_inv = new double[numRows];
 		double [] centroid = new double[numPoints];
 		for (int i=0;i<numRows;i++){  //points_shifted=get shifted versions of all points;
 			SimpleMatrix vector = points.extractVector(true, i);
 			vector=distance_result(cur_center,vector);
 			points.insertIntoThis(i,0,vector);
+			norms_inv[i] = Math.pow(vector.normF(),-1);
 		}
 		
-		SimpleMatrix points_norm=points.elementMult(points);
-		double norm_value;
-		double[] repmat_norm=new double[numPoints];
+		SimpleMatrix points_norm_inv= new SimpleMatrix(numRows,numPoints);    //points.elementMult(points);
+		
+		double[] repmat_norm_inv=new double[numPoints];
 		for (int i=0;i<numRows;i++){
-			norm_value=Math.pow(points_norm.extractVector(true, i).elementSum(),2);
 			for (int j=0;j<numPoints;j++){
-				repmat_norm[j]=norm_value;
+				repmat_norm_inv[j]= norms_inv[i];  //norm_value;
 			}
-			points_norm.setRow(0, 0, repmat_norm); //SimpleMatrix a_norm = repmat(sqrt(sum(a.^2,2)), [1 size(a,2)]);
+			points_norm_inv.setRow(i, 0, repmat_norm_inv); //SimpleMatrix a_norm = repmat(sqrt(sum(a.^2,2)), [1 size(a,2)]);
 		}
-		SimpleMatrix b= points.elementMult(points_norm);
+		SimpleMatrix b= points.elementMult(points_norm_inv);
 		SimpleMatrix M= b.transpose().mult(b).minus(SimpleMatrix.identity(numPoints).scale(numRows));
-		//SimpleSVD eigen_value = M.eig();
-		//int numValues=M.eig().getNumberOfEigenvalues();
-		SimpleMatrix centroid_matrix=M.eig().getEigenVector(numPoints-1);
 		
-		for (int i=0;i<numPoints-1;i++){
-			centroid[i]=centroid_matrix.get(i);
+		SimpleEVD eigenDecomp = M.eig();
+		SimpleMatrix centroid_matrix=eigenDecomp.getEigenVector(eigenDecomp.getIndexMin());
+
+		double centroid_sum = centroid_matrix.elementSum();
+		
+		if (centroid_sum >=0){
+			for (int i=0;i<numPoints;i++){
+				centroid[i]=centroid_matrix.get(i);
+			}
+		}else{
+			for (int i=0;i<numPoints;i++){
+				centroid[i]=-centroid_matrix.get(i);
+			}
 		}
+
 		return centroid;
 	}
 
