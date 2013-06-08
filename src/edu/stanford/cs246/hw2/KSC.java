@@ -174,7 +174,6 @@ public class KSC {
 							for (int i=0;i<numPoints;i++){	
 								p.set(i,point[i]);
 							}						
-							SimpleMatrix mat = c.extractVector(true, centroidIndex);
 							double tmp = distance(c.extractVector(true,centroidIndex), p);
 							if (tmp < distance) {
 								closestCentroid = centroidIndex; //INIT.indexOf(centroid);
@@ -182,9 +181,7 @@ public class KSC {
 							}
 						}
 					}else{
-						
 						closestCentroid = Math.round((numOfClusters-1)*(float)Math.random());
-						//System.out.println("Iteration #:" + numIterations + " #of Clusters:" + String.valueOf(numOfClusters) + " Closest Centroid:" + String.valueOf(closestCentroid));
 					}
 					log.info("Mapper finished calculating distance");
 					
@@ -327,7 +324,7 @@ public class KSC {
 		String inputDir = args[0];
 		//String opDirBase = args[1];
 		String initCentroidsPath = args[2];
-		int no_of_iters = 2;//Integer.valueOf(args[3]);  // Ucomment for amazon 
+		int no_of_iters = 10;//100;//Integer.valueOf(args[3]);  // Ucomment for amazon 
 		int max_clusters = Integer.valueOf(args[4]);
 		int stepSize=Integer.valueOf(args[5]);
 		int min_clusters = 10;
@@ -347,15 +344,15 @@ public class KSC {
 		/*** uncomment for amazon ***/
 		//inputFiles = inputFiles.substring(0, inputFiles.length()-1);
 		//inputFiles = uriStr+ "electric_interval_data_long_part1_and2_96.txt";
-		inputFiles ="./input-only/test_shapes_100k.csv";
-		//inputFiles ="./input-only/test_10.csv";
+		//inputFiles ="./input-only/test_shapes_100k.csv";
+		inputFiles ="./input-only/test_10.csv";
 		//inputFiles = "./input-only/electric_interval_data_long_part1_and2_96.txt";
 
 
 		//int j=50;
 		String cDir = "";
 		//for (int j=min_clusters; j<=max_clusters;j+=stepSize){  //Number of clusters
-			int j=100; //Uncomment for amazon
+			int j= 2;//100; //Uncomment for amazon
 			String opDirBase = args[1]+String.valueOf(j);
 			conf.set(NUMOFCLUSTERS, String.valueOf(j));
 	      	//System.out.println(conf.get(NUMOFCLUSTERS));
@@ -448,7 +445,7 @@ public class KSC {
 			//int daily_total=0;
 			for (int i=0;i<length;i++){
 				point[i]=Double.parseDouble(tokens[i+offset]);
-				point[i]=point[i]/1000; //convert from wattH to kWh
+				//point[i]=point[i]/1000; //convert from wattH to kWh
 			//	daily_total+=point[i];
 			}
 		/*	
@@ -524,7 +521,7 @@ public class KSC {
 				pnorm=x.normF();
 			}
 			curDistance= x.minus(y_shift.scale(alpha)).normF()/pnorm;    //norm(x - alpha * y) / pnorm; pnorm=1 if point=0, else pnorm=norm(point);
-			if (curDistance < minDistance){
+			if (curDistance <= minDistance){
 				minDistance=curDistance;
 				min_y_shift.insertIntoThis(0, 0, y_shift);
 			}
